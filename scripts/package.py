@@ -22,13 +22,13 @@ def build(tag=None):
         'wordpress': r'Requires at least: ([\d.]+)', 'php': r'Requires PHP: ([\d.]+)'
     }.items()}
     names = ['wp-about-bible.php', 'uninstall.php', 'readme.txt', 'LICENSE']
-    for directory in ('includes', 'assets'):
+    for directory in ('includes', 'assets', 'templates'):
         names.extend(p.relative_to(ROOT).as_posix() for p in (ROOT / directory).rglob('*') if p.is_file())
     allowed = {'.php', '.css', '.js', '.json'}
     for name in names:
         path = ROOT / name
         assert not path.is_symlink(), 'Symlinks are forbidden'
-        if name.startswith(('includes/', 'assets/')):
+        if name.startswith(('includes/', 'assets/', 'templates/')):
             assert path.suffix in allowed, f'Unexpected package file: {name}'
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)

@@ -127,6 +127,7 @@ def start_server(args, config, root, logs_dir, workdir):
         time.sleep(1)
     if not ready.is_set():
         stop_server(proc)
+        report_log(logs_dir, config)
         sys.exit("::error::WordPress Playground did not start (blueprint or activation failed); see the log above")
     return proc
 

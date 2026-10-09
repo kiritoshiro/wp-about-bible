@@ -9,6 +9,7 @@ final class ABible_Frontend {
         add_action( 'wp_enqueue_scripts', array( $this, 'assets' ) );
         add_filter( 'the_content', array( $this, 'publication' ), 20 );
         add_action( 'pre_get_posts', array( $this, 'archives' ) );
+        add_filter( 'template_include', array( $this, 'archive_template' ) );
     }
 
     public function assets() {
@@ -26,12 +27,24 @@ final class ABible_Frontend {
     private function query_args() {
         $args = array( 'post_type' => ABible_Content::TYPE, 'post_status' => 'publish', 'posts_per_page' => 12, 'paged' => min( 10000, max( 1, absint( self::param( 'ab_page' ) ) ) ), 's' => self::param( 'ab_q' ) );
         $tax = array();
+        if ( is_tax( array_keys( ABible_Content::taxonomies() ) ) ) {
+            $term = get_queried_object();
+            $tax[] = array( 'taxonomy' => $term->taxonomy, 'field' => 'term_id', 'terms' => $term->term_id );
+        }
         foreach ( ABible_Content::taxonomies() as $key => $label ) {
             $value = sanitize_title( self::param( $key ) );
             if ( $value ) { $tax[] = array( 'taxonomy' => $key, 'field' => 'slug', 'terms' => $value ); }
         }
         if ( $tax ) { $args['tax_query'] = $tax; }
         return $args;
+    }
+
+    public function archive_template( $template ) {
+        if ( is_post_type_archive( ABible_Content::TYPE ) || is_tax( array_keys( ABible_Content::taxonomies() ) ) ) {
+            $override = locate_template( 'abible/archive.php' );
+            return $override ?: ABIBLE_PATH . 'templates/archive.php';
+        }
+        return $template;
     }
 
     public function archives( $query ) {
@@ -62,6 +75,7 @@ final class ABible_Frontend {
         $html = '<section class="ab-library" aria-label="Publikacijų paieška"><form method="get" class="ab-filters"><label for="' . esc_attr( $id ) . '">Ieškokite publikacijų</label><input type="search" id="' . esc_attr( $id ) . '" name="ab_q" maxlength="200" value="' . esc_attr( self::param( 'ab_q' ) ) . '"><div class="ab-filter-grid">';
         // Preserve the page route when WordPress uses plain permalinks.
         if ( ! get_option( 'permalink_structure' ) && is_page() ) { $html .= '<input type="hidden" name="page_id" value="' . esc_attr( get_queried_object_id() ) . '">'; }
+        if ( ! get_option( 'permalink_structure' ) && is_post_type_archive( ABible_Content::TYPE ) ) { $html .= '<input type="hidden" name="post_type" value="' . esc_attr( ABible_Content::TYPE ) . '">'; }
         foreach ( ABible_Content::taxonomies() as $key => $label ) {
             $terms = get_terms( array( 'taxonomy' => $key, 'hide_empty' => true ) );
             if ( is_wp_error( $terms ) || ! $terms ) { continue; }

@@ -1,0 +1,21 @@
+name: Bug report
+description: Report a reproducible library or update problem. Use SECURITY.md for vulnerabilities.
+body:
+  - type: textarea
+    id: environment
+    attributes:
+      label: Versions
+      description: Plugin, WordPress, PHP and theme versions. Do not include credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps and expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Sanitized error or screenshot
+      description: Remove private content, tokens and personal information.

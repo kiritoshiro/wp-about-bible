@@ -248,7 +248,8 @@ class ABible_Updater {
             );
         }
 
-        $temporary_file = wp_tempnam( 'bible-update.zip' );
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        $temporary_file = wp_tempnam( 'abible-update.zip' );
         if ( ! $temporary_file ) {
             return new WP_Error( 'abible_github_tempfile_failed', 'Could not create an update temporary file.' );
         }
