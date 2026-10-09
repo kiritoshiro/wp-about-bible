@@ -9,6 +9,39 @@ final class ABible_Admin {
         add_action( 'admin_notices', array( $this, 'notice' ) );
         add_action( 'admin_menu', array( $this, 'menu' ) );
         add_action( 'admin_post_abible_setup', array( $this, 'setup' ) );
+        add_action( 'abible_topic_add_form_fields', array( $this, 'topic_image_field' ) );
+        add_action( 'abible_topic_edit_form_fields', array( $this, 'topic_image_field' ) );
+        add_action( 'created_abible_topic', array( $this, 'save_topic_image' ) );
+        add_action( 'edited_abible_topic', array( $this, 'save_topic_image' ) );
+        add_action( 'admin_enqueue_scripts', array( $this, 'topic_assets' ) );
+    }
+
+    public function topic_assets() {
+        $screen = get_current_screen();
+        if ( ! $screen || 'abible_topic' !== $screen->taxonomy ) { return; }
+        wp_enqueue_media();
+        wp_enqueue_script( 'abible-topic-media', plugins_url( 'assets/topic-media.js', ABIBLE_FILE ), array( 'media-views' ), ABIBLE_VERSION, true );
+    }
+
+    public function topic_image_field( $term ) {
+        $editing = $term instanceof WP_Term;
+        $id = $editing ? absint( get_term_meta( $term->term_id, '_abible_image_id', true ) ) : 0;
+        echo $editing ? '<tr class="form-field"><th>Paveikslėlis</th><td>' : '<div class="form-field"><label>Paveikslėlis</label>';
+        wp_nonce_field( 'abible_topic_image', 'abible_topic_nonce' );
+        echo '<div class="ab-topic-media"><input type="hidden" name="abible_image_id" value="' . esc_attr( $id ) . '"><div class="ab-topic-preview">';
+        if ( $id ) { echo wp_get_attachment_image( $id, 'thumbnail' ); }
+        echo '</div><button type="button" class="button ab-select-image">Pasirinkti paveikslėlį</button> <button type="button" class="button ab-remove-image">Naudoti numatytąjį</button><p>Rekomenduojamas santykis 5:3. Nepasirinkus naudojama įskiepio iliustracija.</p></div>';
+        echo $editing ? '</td></tr>' : '</div>';
+    }
+
+    public function save_topic_image( $term_id ) {
+        if ( ! current_user_can( 'manage_categories' ) || ! isset( $_POST['abible_topic_nonce'] ) || ! is_string( $_POST['abible_topic_nonce'] ) || ! wp_verify_nonce( sanitize_text_field( wp_unslash( $_POST['abible_topic_nonce'] ) ), 'abible_topic_image' ) ) { return; }
+        if ( ! isset( $_POST['abible_image_id'] ) || ! is_string( $_POST['abible_image_id'] ) ) { return; }
+        $value = sanitize_text_field( wp_unslash( $_POST['abible_image_id'] ) );
+        if ( ! ctype_digit( $value ) ) { return; }
+        $id = absint( $value );
+        if ( 0 === $id ) { delete_term_meta( $term_id, '_abible_image_id' ); }
+        elseif ( wp_attachment_is_image( $id ) && current_user_can( 'edit_post', $id ) ) { update_term_meta( $term_id, '_abible_image_id', $id ); }
     }
 
     public function boxes() {

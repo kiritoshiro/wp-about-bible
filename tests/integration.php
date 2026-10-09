@@ -8,6 +8,9 @@ function abible_assert( $condition, $message ) {
     if ( ! $condition ) { throw new RuntimeException( 'ABible test: ' . $message ); }
 }
 wp_set_current_user( 1 );
+global $wp_version;
+abible_assert( str_starts_with( PHP_VERSION, ABIBLE_TEST_PHP . '.' ), 'actual PHP matches requested runtime' );
+if ( 'latest' !== ABIBLE_TEST_WP ) { abible_assert( $wp_version === ABIBLE_TEST_WP || str_starts_with( $wp_version, ABIBLE_TEST_WP . '.' ), 'actual WordPress matches declared minimum' ); }
 abible_assert( post_type_exists( ABible_Content::TYPE ), 'publication type registered' );
 abible_assert( count( ABible_Content::books() ) === 66, '66 canonical book IDs' );
 ABible_Content::activate();
@@ -48,8 +51,6 @@ abible_assert( get_post_meta( $id, '_abible_source_title', true ) === 'Verified 
 $_POST = array();
 delete_transient( 'abible_notice_1' );
 wp_set_object_terms( $id, 'metodika', 'abible_topic' );
-wp_set_object_terms( $id, 'vadovas', 'abible_kind' );
-wp_set_object_terms( $id, 'ivadas', 'abible_level' );
 $draft = wp_insert_post( array( 'post_type' => ABible_Content::TYPE, 'post_status' => 'draft', 'post_title' => 'PRIVATE-DRAFT-FIXTURE' ) );
 wp_set_current_user( 0 );
 $request = new WP_REST_Request( 'GET', '/wp/v2/abible_publication/' . $id );
@@ -60,9 +61,41 @@ abible_assert( ! str_contains( $json, 'PRIVATE-EDITORIAL' ) && ! str_contains( $
 $response = rest_do_request( new WP_REST_Request( 'GET', '/wp/v2/abible_publication/' . $draft ) );
 abible_assert( $response->get_status() !== 200, 'draft is not public' );
 $frontend = new ABible_Frontend();
+$home = $frontend->home();
+abible_assert( substr_count( $home, 'class="ab-topic-card"' ) === 8, 'all eight topics visible with sparse content' );
+abible_assert( ! str_contains( $home, '<form' ) && ! str_contains( $home, '<select' ), 'home leads with topics instead of filters' );
+abible_assert( ! taxonomy_exists( 'abible_level' ) && ! taxonomy_exists( 'abible_kind' ), 'unwanted classifications removed' );
+$term = get_term_by( 'slug', 'metodika', 'abible_topic' );
+wp_set_current_user( 1 );
+$image_id = wp_insert_attachment( array( 'post_title' => 'Topic test', 'post_mime_type' => 'image/jpeg', 'post_status' => 'inherit' ) );
+update_post_meta( $image_id, '_wp_attached_file', 'topic-test.jpg' );
+$_POST = array( 'abible_image_id' => (string) $image_id );
+$admin->save_topic_image( $term->term_id );
+abible_assert( ! get_term_meta( $term->term_id, '_abible_image_id', true ), 'image update requires nonce' );
+$_POST['abible_topic_nonce'] = wp_create_nonce( 'abible_topic_image' );
+$admin->save_topic_image( $term->term_id );
+abible_assert( (int) get_term_meta( $term->term_id, '_abible_image_id', true ) === $image_id, 'authorized image assignment saved' );
+wp_set_current_user( $subscriber );
+$_POST = array( 'abible_image_id' => '0', 'abible_topic_nonce' => wp_create_nonce( 'abible_topic_image' ) );
+$admin->save_topic_image( $term->term_id );
+abible_assert( (int) get_term_meta( $term->term_id, '_abible_image_id', true ) === $image_id, 'subscriber cannot remove image with valid nonce' );
+wp_set_current_user( 1 );
+$_POST = array( 'abible_image_id' => (string) $id, 'abible_topic_nonce' => wp_create_nonce( 'abible_topic_image' ) );
+$admin->save_topic_image( $term->term_id );
+abible_assert( (int) get_term_meta( $term->term_id, '_abible_image_id', true ) === $image_id, 'nonimage rejected without replacing image' );
+$_POST['abible_image_id'] = '0';
+$admin->save_topic_image( $term->term_id );
+abible_assert( ! get_term_meta( $term->term_id, '_abible_image_id', true ), 'default illustration restored' );
+$_POST = array();
+wp_set_current_user( 0 );
+
 $library = $frontend->library();
 abible_assert( str_contains( $library, 'Kontekstas' ) && ! str_contains( $library, 'PRIVATE-DRAFT' ), 'library contains only published content' );
-$_GET = array( 'ab_q' => '<script>alert(1)</script>', 'abible_book' => array( 'gen' ) );
+$_GET = array( 'filter_abible_book' => 'gen', 'filter_abible_topic' => 'metodika' );
+abible_assert( str_contains( $frontend->library(), 'Kontekstas' ), 'combined filters match publication' );
+$_GET['filter_abible_book'] = 'rev';
+abible_assert( ! str_contains( $frontend->library(), 'Kontekstas' ), 'book filter excludes unrelated publication' );
+$_GET = array( 'ab_q' => '<script>alert(1)</script>', 'filter_abible_book' => array( 'gen' ) );
 abible_assert( ! str_contains( $frontend->library(), '<script>' ), 'malformed filters are harmless' );
 $_GET = array();
 
@@ -123,4 +156,4 @@ remove_filter( 'pre_http_request', $mock, 10 );
 $_GET = array();
 wp_set_current_user( 0 );
 echo "ABible integration: {$assertions} assertions passed.\n";
-file_put_contents( '/logs/fixture.json', wp_json_encode( array( 'publication' => $id, 'draft' => $draft, 'assertions' => $assertions ) ) );
+file_put_contents( '/logs/fixture.json', wp_json_encode( array( 'publication' => $id, 'draft' => $draft, 'assertions' => $assertions, 'wordpress' => $wp_version, 'php' => PHP_VERSION ) ) );

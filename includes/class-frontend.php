@@ -31,8 +31,8 @@ final class ABible_Frontend {
             $term = get_queried_object();
             $tax[] = array( 'taxonomy' => $term->taxonomy, 'field' => 'term_id', 'terms' => $term->term_id );
         }
-        foreach ( ABible_Content::taxonomies() as $key => $label ) {
-            $value = sanitize_title( self::param( $key ) );
+        foreach ( array( 'abible_topic' => 'Temos', 'abible_book' => 'Biblijos knygos' ) as $key => $label ) {
+            $value = sanitize_title( self::param( 'filter_' . $key ) );
             if ( $value ) { $tax[] = array( 'taxonomy' => $key, 'field' => 'slug', 'terms' => $value ); }
         }
         if ( $tax ) { $args['tax_query'] = $tax; }
@@ -54,41 +54,63 @@ final class ABible_Frontend {
     }
 
     private function card( $post ) {
-        $terms = get_the_terms( $post, 'abible_kind' );
-        $label = $terms && ! is_wp_error( $terms ) ? $terms[0]->name : 'Publikacija';
-        return '<article class="ab-card"><p class="ab-eyebrow">' . esc_html( $label ) . '</p><h3><a href="' . esc_url( get_permalink( $post ) ) . '">' . esc_html( get_the_title( $post ) ) . '</a></h3><p>' . esc_html( wp_trim_words( $post->post_excerpt ?: wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 32 ) ) . '</p></article>';
+        $authors = get_the_terms( $post, 'abible_author' );
+        $credit = $authors && ! is_wp_error( $authors ) ? implode( ', ', wp_list_pluck( $authors, 'name' ) ) : '';
+        return '<article class="ab-article-row"><h3><a href="' . esc_url( get_permalink( $post ) ) . '">' . esc_html( get_the_title( $post ) ) . '</a></h3>' . ( $credit ? '<p class="ab-credit">' . esc_html( $credit ) . '</p>' : '' ) . '<p>' . esc_html( wp_trim_words( $post->post_excerpt ?: wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 32 ) ) . '</p></article>';
+    }
+
+    public static function topic_image( $term, $slug ) {
+        $image_id = $term ? absint( get_term_meta( $term->term_id, '_abible_image_id', true ) ) : 0;
+        if ( $image_id && wp_attachment_is_image( $image_id ) ) {
+            return wp_get_attachment_image( $image_id, 'large', false, array( 'alt' => '', 'loading' => 'lazy', 'class' => 'ab-topic-image' ) );
+        }
+        return '<img class="ab-topic-image" src="' . esc_url( plugins_url( 'assets/topics/' . $slug . '.svg', ABIBLE_FILE ) ) . '" alt="" width="800" height="480" loading="lazy">';
     }
 
     public function home() {
         $archive = get_post_type_archive_link( ABible_Content::TYPE );
-        $html = '<section class="ab-library" aria-label="Biblijos pažinimas"><div class="ab-intro"><p class="ab-eyebrow">BIBLIJOS PAŽINIMAS</p><h2>Pažinkite Bibliją giliau</h2><p>Jos istorija, kalbos, tekstai ir atsakingas aiškinimas.</p><a class="ab-button" href="' . esc_url( $archive ) . '">Visos publikacijos</a></div><h2>Nuo ko pradėti?</h2><div class="ab-grid">';
-        foreach ( array( 'istorija' => array( 'Susipažinkite su Biblija', 'Kilmė, kanonas ir teksto perdavimas.' ), 'metodika' => array( 'Mokykitės tyrinėti', 'Kontekstas, žanrai ir praktiniai žingsniai.' ), 'komentarai' => array( 'Supraskite ištrauką', 'Komentarai ir sudėtingų vietų paaiškinimai.' ) ) as $slug => $text ) {
+        $html = '<section class="ab-library ab-home" aria-label="Biblijos pažinimas"><div class="ab-intro"><p class="ab-eyebrow">BIBLIJOS PAŽINIMAS</p><h2>Pažinkite Bibliją giliau</h2><p>Biblijos istorija, kalbos, tekstai ir tyrinėjimo metodai vienoje vietoje.</p><a class="ab-text-link" href="#ab-temos">Pasirinkite temą <span aria-hidden="true">↓</span></a></div><div class="ab-section-heading" id="ab-temos"><h2>Tyrinėkite pagal temą</h2><p>Nuo Biblijos ištakų iki jos aiškinimo — pasirinkite tai, ką norite pažinti.</p></div><div class="ab-topics">';
+        foreach ( ABible_Content::topics() as $slug => $topic ) {
             $term = get_term_by( 'slug', $slug, 'abible_topic' );
-            if ( $term && $term->count ) { $html .= '<article class="ab-card"><h3><a href="' . esc_url( get_term_link( $term ) ) . '">' . esc_html( $text[0] ) . '</a></h3><p>' . esc_html( $text[1] ) . '</p></article>'; }
+            if ( ! $term ) { continue; }
+            $link = get_term_link( $term );
+            if ( is_wp_error( $link ) ) { continue; }
+            $description = $term->description ?: $topic[1];
+            $html .= '<a class="ab-topic-card" href="' . esc_url( $link ) . '">' . self::topic_image( $term, $slug ) . '<div class="ab-topic-body"><h3>' . esc_html( $term->name ) . '</h3><p>' . esc_html( $description ) . '</p><span class="ab-topic-link">Pažinti temą <span aria-hidden="true">↗</span></span></div></a>';
         }
-        $html .= '</div><h2>Tyrinėkite biblioteką</h2>' . $this->library();
-        return $html . '</section>';
+        $html .= '</div><div class="ab-browse"><h2>Ieškote konkrečios Biblijos knygos?</h2><p>Raskite turimus įvadus ir ištraukų paaiškinimus.</p><div class="ab-book-links">';
+        $books = get_terms( array( 'taxonomy' => 'abible_book', 'hide_empty' => true ) );
+        if ( ! is_wp_error( $books ) ) {
+            foreach ( $books as $book ) { $html .= '<a href="' . esc_url( get_term_link( $book ) ) . '">' . esc_html( $book->name ) . '</a>'; }
+        }
+        $html .= '</div><a class="ab-text-link" href="' . esc_url( $archive ) . '">Visos publikacijos ir paieška →</a></div></section>';
+        return $html;
     }
 
     public function library() {
+        if ( is_tax( 'abible_topic' ) && 0 === (int) get_queried_object()->count ) {
+            return '<section class="ab-library"><p class="ab-empty">Šios temos publikacijos ruošiamos.</p><a class="ab-text-link" href="' . esc_url( get_post_type_archive_link( ABible_Content::TYPE ) ) . '">Peržiūrėti turimas publikacijas →</a></section>';
+        }
         $id = wp_unique_id( 'ab-search-' );
-        $html = '<section class="ab-library" aria-label="Publikacijų paieška"><form method="get" class="ab-filters"><label for="' . esc_attr( $id ) . '">Ieškokite publikacijų</label><input type="search" id="' . esc_attr( $id ) . '" name="ab_q" maxlength="200" value="' . esc_attr( self::param( 'ab_q' ) ) . '"><div class="ab-filter-grid">';
+        $action = is_page() ? get_permalink( get_queried_object_id() ) : ( is_tax() ? get_term_link( get_queried_object() ) : get_post_type_archive_link( ABible_Content::TYPE ) );
+        $html = '<section class="ab-library" aria-label="Publikacijų paieška"><form method="get" action="' . esc_url( $action ) . '" class="ab-filters"><label for="' . esc_attr( $id ) . '">Ieškokite publikacijų</label><input type="search" id="' . esc_attr( $id ) . '" name="ab_q" maxlength="200" value="' . esc_attr( self::param( 'ab_q' ) ) . '"><div class="ab-filter-grid">';
         // Preserve the page route when WordPress uses plain permalinks.
         if ( ! get_option( 'permalink_structure' ) && is_page() ) { $html .= '<input type="hidden" name="page_id" value="' . esc_attr( get_queried_object_id() ) . '">'; }
         if ( ! get_option( 'permalink_structure' ) && is_post_type_archive( ABible_Content::TYPE ) ) { $html .= '<input type="hidden" name="post_type" value="' . esc_attr( ABible_Content::TYPE ) . '">'; }
-        foreach ( ABible_Content::taxonomies() as $key => $label ) {
+        foreach ( array( 'abible_topic' => 'Temos', 'abible_book' => 'Biblijos knygos' ) as $key => $label ) {
+            if ( is_tax( $key ) ) { continue; }
             $terms = get_terms( array( 'taxonomy' => $key, 'hide_empty' => true ) );
             if ( is_wp_error( $terms ) || ! $terms ) { continue; }
-            $html .= '<label>' . esc_html( $label ) . '<select name="' . esc_attr( $key ) . '"><option value="">Visi</option>';
-            foreach ( $terms as $term ) { $html .= '<option value="' . esc_attr( $term->slug ) . '" ' . selected( self::param( $key ), $term->slug, false ) . '>' . esc_html( $term->name ) . '</option>'; }
+            $html .= '<label>' . esc_html( $label ) . '<select name="' . esc_attr( 'filter_' . $key ) . '"><option value="">Visi</option>';
+            foreach ( $terms as $term ) { $html .= '<option value="' . esc_attr( $term->slug ) . '" ' . selected( self::param( 'filter_' . $key ), $term->slug, false ) . '>' . esc_html( $term->name ) . '</option>'; }
             $html .= '</select></label>';
         }
-        $html .= '</div><button class="ab-button" type="submit">Ieškoti</button> <a href="' . esc_url( remove_query_arg( array_merge( array_keys( ABible_Content::taxonomies() ), array( 'ab_q', 'ab_page' ) ) ) ) . '">Išvalyti filtrus</a></form>';
+        $html .= '</div><button class="ab-button" type="submit">Ieškoti</button> <a href="' . esc_url( remove_query_arg( array_merge( array_map( static fn( $key ) => 'filter_' . $key, array_keys( ABible_Content::taxonomies() ) ), array( 'ab_q', 'ab_page' ) ) ) ) . '">Išvalyti filtrus</a></form>';
         $query = new WP_Query( $this->query_args() );
-        $html .= '<p>' . esc_html( 'Rasta publikacijų: ' . $query->found_posts ) . '</p><div class="ab-grid">';
+        $html .= '<p>' . esc_html( 'Rasta publikacijų: ' . $query->found_posts ) . '</p><div class="ab-article-list">';
         foreach ( $query->posts as $post ) { $html .= $this->card( $post ); }
         $html .= '</div>';
-        if ( ! $query->posts ) { $html .= '<p>Publikacijų nerasta. Pabandykite kitą žodį arba išvalykite filtrus.</p>'; }
+        if ( ! $query->posts ) { $html .= is_tax( 'abible_topic' ) && ! self::param( 'ab_q' ) ? '<p class="ab-empty">Šios temos publikacijos ruošiamos. Galite susipažinti su kitomis Biblijos pažinimo temomis.</p>' : '<p>Publikacijų nerasta. Pabandykite kitą žodį arba išvalykite filtrus.</p>'; }
         $links = paginate_links( array( 'base' => add_query_arg( 'ab_page', '%#%' ), 'format' => '', 'current' => $query->query_vars['paged'], 'total' => $query->max_num_pages, 'prev_text' => 'Ankstesnis', 'next_text' => 'Kitas' ) );
         if ( $links ) { $html .= '<nav class="ab-pagination" aria-label="Rezultatų puslapiai">' . wp_kses_post( $links ) . '</nav>'; }
         return $html . '</section>';

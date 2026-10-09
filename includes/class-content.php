@@ -13,7 +13,20 @@ final class ABible_Content {
     }
 
     public static function taxonomies() {
-        return array( 'abible_topic' => 'Temos', 'abible_book' => 'Biblijos knygos', 'abible_level' => 'Sudėtingumas', 'abible_kind' => 'Publikacijos rūšis', 'abible_author' => 'Autoriai' );
+        return array( 'abible_topic' => 'Temos', 'abible_book' => 'Biblijos knygos', 'abible_author' => 'Autoriai' );
+    }
+
+    public static function topics() {
+        return array(
+            'istorija' => array( 'Biblijos istorija ir kanonas', 'Kaip atsirado Biblijos knygos ir susiformavo Senasis bei Naujasis Testamentai.' ),
+            'rankrasciai' => array( 'Rankraščiai ir teksto perdavimas', 'Papirusai, kodeksai, tekstiniai variantai ir Biblijos kelias per amžius.' ),
+            'kalbos' => array( 'Biblijos kalbos', 'Hebrajų, aramėjų ir graikų kalbos: žodžiai, jų reikšmės ir teksto niuansai.' ),
+            'vertimai' => array( 'Biblijos vertimai', 'Nuo senųjų vertimų iki lietuviškos Biblijos: istorija, metodai ir palyginimai.' ),
+            'metodika' => array( 'Hermeneutika ir tyrinėjimo metodai', 'Kaip suprasti kontekstą, atpažinti žanrą ir nuosekliai tyrinėti Šventąjį Raštą.' ),
+            'komentarai' => array( 'Biblijos knygų komentarai', 'Knygų įvadai, ištraukų paaiškinimai ir sudėtingų Biblijos vietų nagrinėjimas.' ),
+            'ikvepimas' => array( 'Apreiškimas, įkvėpimas ir autoritetas', 'Biblijos kilmė, dieviškasis įkvėpimas ir Šventojo Rašto vieta tikėjime.' ),
+            'irankiai' => array( 'Biblijos tyrinėjimo įrankiai', 'Žodynai, konkordancijos, atlasai ir kitos priemonės savarankiškam tyrinėjimui.' ),
+        );
     }
 
     public static function register() {
@@ -24,7 +37,7 @@ final class ABible_Content {
             'has_archive' => 'biblija/biblioteka',
             'rewrite' => array( 'slug' => 'biblija/straipsniai', 'with_front' => false ),
         ) );
-        $slugs = array( 'abible_topic' => 'temos', 'abible_book' => 'knygos', 'abible_level' => 'lygis', 'abible_kind' => 'rusis', 'abible_author' => 'autoriai' );
+        $slugs = array( 'abible_topic' => 'temos', 'abible_book' => 'knygos', 'abible_author' => 'autoriai' );
         foreach ( self::taxonomies() as $key => $label ) {
             register_taxonomy( $key, self::TYPE, array(
                 'label' => $label, 'public' => true, 'show_in_rest' => true, 'show_admin_column' => true,
@@ -123,13 +136,11 @@ final class ABible_Content {
         self::register();
         $terms = array(
             'abible_book' => self::books(),
-            'abible_topic' => array( 'istorija' => 'Biblijos istorija ir kanonas', 'rankrasciai' => 'Rankraščiai ir teksto perdavimas', 'kalbos' => 'Biblijos kalbos', 'vertimai' => 'Biblijos vertimai', 'metodika' => 'Kaip tyrinėti Bibliją', 'komentarai' => 'Biblijos knygų komentarai', 'ikvepimas' => 'Apreiškimas ir įkvėpimas', 'kontekstas' => 'Istorinis ir kultūrinis kontekstas', 'irankiai' => 'Tyrinėjimo įrankiai' ),
-            'abible_level' => array( 'ivadas' => 'Įvadinis', 'pazengusiems' => 'Pažengusiems', 'specialistams' => 'Specialistams' ),
-            'abible_kind' => array( 'straipsnis' => 'Straipsnis', 'komentaras' => 'Komentaras', 'klausimas' => 'Klausimai ir atsakymai', 'vadovas' => 'Praktinis vadovas', 'knygos-ivadas' => 'Knygos įvadas', 'tyrimas' => 'Tyrimas' ),
+            'abible_topic' => array_map( static fn( $topic ) => $topic[0], self::topics() ),
         );
         foreach ( $terms as $taxonomy => $values ) {
             foreach ( $values as $slug => $name ) {
-                if ( ! term_exists( $slug, $taxonomy ) ) { wp_insert_term( $name, $taxonomy, array( 'slug' => $slug ) ); }
+                if ( ! term_exists( $slug, $taxonomy ) ) { wp_insert_term( $name, $taxonomy, array( 'slug' => $slug, 'description' => 'abible_topic' === $taxonomy ? self::topics()[ $slug ][1] : '' ) ); }
             }
         }
         flush_rewrite_rules();

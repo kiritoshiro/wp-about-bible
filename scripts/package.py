@@ -24,7 +24,7 @@ def build(tag=None):
     names = ['wp-about-bible.php', 'uninstall.php', 'readme.txt', 'LICENSE']
     for directory in ('includes', 'assets', 'templates'):
         names.extend(p.relative_to(ROOT).as_posix() for p in (ROOT / directory).rglob('*') if p.is_file())
-    allowed = {'.php', '.css', '.js', '.json'}
+    allowed = {'.php', '.css', '.js', '.json', '.svg'}
     for name in names:
         path = ROOT / name
         assert not path.is_symlink(), 'Symlinks are forbidden'

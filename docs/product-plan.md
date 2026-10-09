@@ -2,6 +2,15 @@
 
 Research and planning date: 9 October 2026.
 
+## Current navigation decision (user revision, 9 October 2026)
+
+This decision supersedes conflicting navigation/filter proposals below. Start with a small, curated educational portal. The homepage shows eight image-led topic cards: history/canon, manuscripts/transmission, biblical languages, translations, hermeneutics/methods, book commentaries, revelation/inspiration/authority, and study tools. Each opens its introduction and publications. Show all eight directions even when content is still being prepared; never fabricate counts or articles. Editors can replace each bundled original illustration with a licensed image from the media library.
+
+Keep topic and Bible-book browsing. Remove difficulty and publication-type taxonomies and filters. Search and the two useful filters belong inside the library. Retain document authority and original/translation/adaptation attribution as article metadata because these describe the source honestly. Existing unused legacy taxonomy records are preserved, not deleted.
+
+Implementation includes this navigation, source metadata, security gate, release builder and updater. The longer roadmap below remains planning, not a claim that every feature is implemented.
+
+
 Public name: **Biblijos pažinimas**. Plugin working name: **Adventistai — Biblijos biblioteka**.
 
 This revision incorporates a targeted review of public Adventist research, reference, and learning resources. It supersedes the earlier plan where priorities differ. It is a proposed specification, not implemented software. Public pages and publisher descriptions were reviewed; enrolled course experiences, APIs, reuse permissions, and the installed adventistai.lt software configuration were not verified.

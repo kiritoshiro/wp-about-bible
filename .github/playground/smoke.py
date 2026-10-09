@@ -100,8 +100,13 @@ def blueprint(config, logs_vfs):
 def start_server(args, config, root, logs_dir, workdir):
     bp_path = os.path.join(workdir, "blueprint.json")
     with open(bp_path, "w", encoding="utf-8") as fh:
-        json.dump(blueprint(config, "/logs"), fh, indent=2)
-    cmd = ["npx", "--yes", CLI, "server", f"--port={PORT}", f"--php={args.php}", f"--wp={args.wp}",
+        bp = blueprint(config, "/logs")
+        bp["preferredVersions"] = {"php": args.php, "wp": args.wp}
+        bp["steps"][0]["consts"]["ABIBLE_TEST_WP"] = args.wp
+        bp["steps"][0]["consts"]["ABIBLE_TEST_PHP"] = args.php
+        json.dump(bp, fh, indent=2)
+    launcher = ["node", os.path.abspath(args.cli_path)] if args.cli_path else ["npx", "--yes", CLI]
+    cmd = launcher + ["server", f"--port={PORT}", f"--php={args.php}", f"--wp={args.wp}",
            f"--blueprint={bp_path}", "--mount-dir", logs_dir, "/logs"]
     for mount in config["mounts"]:
         cmd += ["--mount-dir", os.path.abspath(os.path.join(root, mount["host"])), mount["vfs"]]
@@ -187,6 +192,8 @@ def main():
     parser.add_argument("--wp", default="latest")
     parser.add_argument("--config", default=".github/playground/config.json")
     parser.add_argument("--boot-timeout", type=int, default=420)
+    parser.add_argument("--cli-path", help="Use an already installed Playground CLI entry point")
+    parser.add_argument("--inspect-seconds", type=int, default=0, help="Keep the fixture running briefly for browser verification")
     args = parser.parse_args()
 
     root = os.getcwd()
@@ -208,6 +215,14 @@ def main():
                 if needle not in body:
                     fail(f"fixture page: expected output not found: {needle!r}")
 
+        for path in config.get("guest_paths", []):
+            body = check_page(opener, path)
+            if "PRIVATE-EDITORIAL" in body or "PRIVATE-PERMISSION" in body or "PRIVATE-DRAFT" in body:
+                fail("Private fixture leaked in public response")
+        fixture_report = os.path.join(logs_dir, "fixture.json")
+        if os.path.exists(fixture_report):
+            with open(fixture_report, encoding="utf-8") as report:
+                print("Integration evidence: " + report.read())
         get(opener, "/wp-login.php")  # sets the test cookie
         form = urllib.parse.urlencode({"log": USER, "pwd": PASSWORD, "wp-submit": "Log In",
                                        "redirect_to": BASE + "/wp-admin/", "testcookie": "1"}).encode()
@@ -217,6 +232,9 @@ def main():
             fail(f"could not log in to the Playground site (HTTP {status})")
             return
         check_admin(opener, config)
+        if args.inspect_seconds and not failures:
+            print(f"Browser verification available at {BASE}/?pagename=playground-smoke", flush=True)
+            time.sleep(min(1800, max(0, args.inspect_seconds)))
     finally:
         stop_server(proc)
         report_log(logs_dir, config)
