@@ -1,0 +1,10 @@
+/dist/
+/vendor/
+**/vendor/
+/node_modules/
+**/__pycache__/
+/work/
+*.log
+.env*
+!.env.example
+.DS_Store

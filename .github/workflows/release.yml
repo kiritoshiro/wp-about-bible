@@ -1,0 +1,32 @@
+name: Release WordPress plugin
+on:
+  push:
+    tags: ['v*']
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  checks:
+    uses: ./.github/workflows/security-gate.yml # zizmor: ignore[self-repository] -- Gate the exact tagged source.
+  release:
+    needs: checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Require a tag on main and matching versions
+        run: |
+          git merge-base --is-ancestor HEAD origin/main
+          python3 scripts/package.py --tag "$GITHUB_REF_NAME"
+      - name: Publish checked package
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/wp-about-bible.zip dist/wp-about-bible.zip.sha256 dist/manifest.json --verify-tag --title "$GITHUB_REF_NAME" --notes-file dist/release-notes.md

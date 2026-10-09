@@ -1,0 +1,12 @@
+{
+  "mounts": [
+    {"host":"dist/runtime/wp-about-bible","vfs":"/wordpress/wp-content/plugins/wp-about-bible"},
+    {"host":"tests","vfs":"/abible-tests"}
+  ],
+  "plugins":["wp-about-bible/wp-about-bible.php"],
+  "watch":["/wordpress/wp-content/plugins/wp-about-bible/"],
+  "fixture":"[abible_home]",
+  "expect":["Pažinkite Bibliją", "ab-filters"],
+  "after_activate":[{"step":"runPHP","code":"<?php require '/wordpress/wp-load.php'; require '/abible-tests/integration.php';"}],
+  "paths":["/wp-admin/edit.php?post_type=abible_publication", "/wp-admin/post-new.php?post_type=abible_publication", "/wp-admin/edit.php?post_type=abible_publication&page=abible-settings"]
+}

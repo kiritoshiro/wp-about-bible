@@ -1,0 +1,51 @@
+name: WordPress runtime and error checks
+on:
+  workflow_call:
+permissions:
+  contents: read
+jobs:
+  plugin-check:
+    name: Plugin Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: WordPress/plugin-check-action@10857da14b6c2246d15402b3e69f777edcf8c12e # v1.1.9
+        with:
+          build-dir: ./
+          slug: wp-about-bible
+          categories: general,security,performance,accessibility
+          exclude-directories: .github,tests,docs,scripts,dist,node_modules,vendor
+  runtime:
+    name: Runtime PHP ${{ matrix.php }} / WP ${{ matrix.wp }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - php: '8.3'
+            wp: '6.6'
+          - php: '8.4'
+            wp: latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      - name: PHP syntax
+        run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
+      - name: Build and inspect installable package
+        run: python3 scripts/package.py
+      - name: Test the packaged plugin in WordPress
+        env:
+          PHP_VERSION: ${{ matrix.php }}
+          WP_VERSION: ${{ matrix.wp }}
+        run: |
+          python3 scripts/prepare-runtime.py
+          python3 .github/playground/smoke.py --php "$PHP_VERSION" --wp "$WP_VERSION"
