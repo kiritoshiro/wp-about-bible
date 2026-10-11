@@ -98,6 +98,10 @@ abible_assert( ! str_contains( $frontend->library(), 'Kontekstas' ), 'book filte
 $_GET = array( 'ab_q' => '<script>alert(1)</script>', 'filter_abible_book' => array( 'gen' ) );
 abible_assert( ! str_contains( $frontend->library(), '<script>' ), 'malformed filters are harmless' );
 $_GET = array();
+$protected = wp_insert_post( array( 'post_type' => ABible_Content::TYPE, 'post_status' => 'publish', 'post_password' => 'fixture', 'post_title' => 'Protected fixture', 'post_excerpt' => 'PROTECTED-EXCERPT-FIXTURE', 'post_content' => 'PROTECTED-BODY-FIXTURE' ) );
+$library = $frontend->library();
+abible_assert( str_contains( $library, 'Protected fixture' ) && ! str_contains( $library, 'PROTECTED-EXCERPT' ) && ! str_contains( $library, 'PROTECTED-BODY' ), 'listing hides password-protected text' );
+wp_delete_post( $protected, true );
 
 // Mock only HTTP transport; execute actual WordPress metadata, transients and filesystem APIs.
 define( 'ABIBLE_GITHUB_TOKEN', 'fixture-only-not-a-real-credential' );
@@ -126,6 +130,10 @@ add_filter( 'pre_http_request', $mock, 10, 3 );
 delete_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
 $check = $updater->filter_plugin_updates( new stdClass() );
 abible_assert( isset( $check->response[ plugin_basename( ABIBLE_FILE ) ] ), 'verified release offered' );
+$cached = get_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
+abible_assert( ! isset( $cached['assets'] ) && 42 === $cached['asset']['id'], 'cache holds only verified fields' );
+$info = $updater->filter_plugin_information( false, 'plugin_information', (object) array( 'slug' => dirname( plugin_basename( ABIBLE_FILE ) ) ) );
+abible_assert( ! str_contains( $info->sections['changelog'], 'abible-requirements' ), 'requirements marker hidden from details' );
 $file = $updater->download_private_release( false, $asset_url, null, array() );
 abible_assert( is_string( $file ) && file_exists( $file ), 'verified download returned' );
 wp_delete_file( $file );
@@ -140,6 +148,13 @@ $mode = 'good';
 $release['assets'][0]['digest'] = '';
 delete_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
 abible_assert( empty( $updater->filter_plugin_updates( new stdClass() )->response ), 'missing digest fails closed' );
+$release['assets'][0]['digest'] = 'sha256:' . hash( 'sha256', $payload );
+$release['body'] = 'No requirements marker';
+delete_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
+abible_assert( empty( $updater->filter_plugin_updates( new stdClass() )->response ), 'missing requirements fail closed' );
+$before = count( $requests );
+$updater->filter_plugin_updates( new stdClass() );
+abible_assert( count( $requests ) === $before, 'invalid release is cached, not refetched' );
 $release['tag_name'] = array( 'bad' );
 delete_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
 abible_assert( empty( $updater->filter_plugin_updates( new stdClass() )->response ), 'malformed tag fails safely' );

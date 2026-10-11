@@ -95,13 +95,14 @@ class ABible_Updater {
             return null;
         }
 
-        if ( ! is_string( $release['body'] ?? null ) || ! preg_match( '/<!-- abible-requirements:(\{[^\r\n]+\}) -->/', $release['body'], $matches ) ) {
-            $this->status( 'invalid', 'Release requirements are missing. No update offered.' );
-            return null;
-        }
-        $requirements = json_decode( $matches[1], true );
+        $requirements = is_string( $release['body'] ?? null ) && preg_match( '/<!-- abible-requirements:(\{[^\r\n]+\}) -->/', $release['body'], $matches ) ? json_decode( $matches[1], true ) : null;
         foreach ( array( 'wordpress', 'php' ) as $requirement ) {
-            if ( ! is_array( $requirements ) || ! is_string( $requirements[ $requirement ] ?? null ) || ! preg_match( '/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/D', $requirements[ $requirement ] ) ) { return null; }
+            if ( ! is_array( $requirements ) || ! is_string( $requirements[ $requirement ] ?? null ) || ! preg_match( '/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/D', $requirements[ $requirement ] ) ) {
+                // Cache the failure too, so a bad release cannot trigger a GitHub request on every update check.
+                set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
+                $this->status( 'invalid', 'Release requirements are missing. No update offered.' );
+                return null;
+            }
         }
         $release['requires'] = $requirements['wordpress'];
         $release['requires_php'] = $requirements['php'];
@@ -152,8 +153,21 @@ class ABible_Updater {
         }
 
         $this->status( 'ok', 'Verified release: ' . $version );
-        $release['version'] = $version;
-        $release['asset'] = $asset;
+        // Cache only the verified fields this class reads, not the full API payload.
+        $release = array(
+            'version'      => $version,
+            'html_url'     => $release['html_url'],
+            'body'         => substr( $release['body'], 0, 20000 ),
+            'published_at' => is_string( $release['published_at'] ?? null ) ? $release['published_at'] : '',
+            'requires'     => $release['requires'],
+            'requires_php' => $release['requires_php'],
+            'asset'        => array(
+                'id'                   => $asset['id'],
+                'size'                 => $asset['size'],
+                'digest'               => $asset['digest'],
+                'browser_download_url' => $asset['browser_download_url'],
+            ),
+        );
         set_site_transient( self::RELEASE_CACHE_KEY, $release, 10 * MINUTE_IN_SECONDS );
 
         return $release;
@@ -216,7 +230,8 @@ class ABible_Updater {
         }
 
         $description = 'A Lithuanian Bible research and study library with source attribution and structured references.';
-        $changelog = is_string( $release['body'] ?? null ) ? wpautop( esc_html( $release['body'] ) ) : '<p>No release notes were provided.</p>';
+        $notes = trim( preg_replace( '/<!-- abible-requirements:[^\r\n]* -->/', '', $release['body'] ) );
+        $changelog = '' !== $notes ? wpautop( esc_html( $notes ) ) : '<p>No release notes were provided.</p>';
 
         return (object) array(
             'name'          => 'Biblijos pažinimas',
@@ -226,7 +241,7 @@ class ABible_Updater {
             'homepage'      => 'https://github.com/' . self::REPOSITORY,
             'requires'      => $release['requires'],
             'requires_php'  => $release['requires_php'],
-            'last_updated'  => isset( $release['published_at'] ) ? $release['published_at'] : '',
+            'last_updated'  => $release['published_at'],
             'download_link' => $release['asset']['browser_download_url'],
             'sections'      => array(
                 'description' => '<p>' . esc_html( $description ) . '</p>',
@@ -284,11 +299,12 @@ class ABible_Updater {
                 return new WP_Error( 'abible_github_download_failed', 'Could not download the GitHub release asset.' );
             }
             clearstatcache( true, $temporary_file );
+            // The digest is mandatory: an absent or malformed digest fails closed.
             $digest = $asset['digest'] ?? '';
             if ( filesize( $temporary_file ) !== intval( $asset['size'] ) ||
                 file_get_contents( $temporary_file, false, null, 0, 4 ) !== "PK\x03\x04" ||
-                ( $digest !== '' && ( ! is_string( $digest ) || ! preg_match( '/^sha256:[a-f0-9]{64}$/D', $digest ) ||
-                    ! hash_equals( substr( $digest, 7 ), hash_file( 'sha256', $temporary_file ) ) ) ) ) {
+                ! is_string( $digest ) || ! preg_match( '/^sha256:[a-f0-9]{64}$/D', $digest ) ||
+                ! hash_equals( substr( $digest, 7 ), hash_file( 'sha256', $temporary_file ) ) ) {
                 return new WP_Error( 'abible_github_package_invalid', 'The release package size, ZIP header, or SHA-256 checksum is invalid.' );
             }
             // WordPress core validates and unpacks the archive after this hook.

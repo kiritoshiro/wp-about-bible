@@ -47,7 +47,10 @@ def build(tag=None):
     revision = subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=ROOT, text=True).strip()
     manifest = {'version': version, 'commit': revision, 'sha256': digest, 'files': len(names), 'requirements': requirements}
     (dist / 'manifest.json').write_text(json.dumps(manifest, indent=2) + '\n', encoding='utf-8')
-    notes = ('Initial Bible library/editor foundation. See README for delivered scope and remaining roadmap.\n\n'
+    readme = (ROOT / 'readme.txt').read_text(encoding='utf-8')
+    changelog = re.search(rf'^= {re.escape(version)} =\n(.+?)(?=^= |\Z)', readme, re.M | re.S)
+    assert changelog, f'readme.txt changelog has no entry for {version}'
+    notes = (changelog.group(1).strip() + '\n\n'
              f'Commit: `{revision}`\n\nSHA-256: `{digest}`\n\n'
              '<!-- abible-requirements:' + json.dumps(requirements, separators=(',', ':')) + ' -->\n')
     (dist / 'release-notes.md').write_text(notes, encoding='utf-8')
