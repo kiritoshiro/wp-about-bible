@@ -137,9 +137,10 @@ final class ABible_Frontend {
         }
         $rows = get_post_meta( $id, '_abible_passages', true );
         foreach ( is_array( $rows ) ? $rows : array() as $row ) {
-            // Tolerate rows imported or written outside the validated editor.
-            if ( ! is_array( $row ) || ! isset( ABible_Content::books()[ $row['book'] ?? '' ] ) ) { continue; }
-            $row += array( 'chapter' => null, 'verse' => null, 'end_chapter' => null, 'end_verse' => null, 'relation' => 'discusses' );
+            // Re-validate with the editor's rules; skip rows imported or written in another shape.
+            $row = is_array( $row ) ? ABible_Content::passages( array( array_map( static fn( $value ) => $value ?? '', $row ) ) ) : null;
+            if ( ! is_array( $row ) || ! $row ) { continue; }
+            $row = $row[0];
             $text = ABible_Content::books()[ $row['book'] ];
             $text .= $row['chapter'] ? ' ' . $row['chapter'] : '';
             $text .= $row['verse'] ? ',' . $row['verse'] : '';

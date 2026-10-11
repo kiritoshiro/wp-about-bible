@@ -102,6 +102,16 @@ $protected = wp_insert_post( array( 'post_type' => ABible_Content::TYPE, 'post_s
 $library = $frontend->library();
 abible_assert( str_contains( $library, 'Protected fixture' ) && ! str_contains( $library, 'PROTECTED-EXCERPT' ) && ! str_contains( $library, 'PROTECTED-BODY' ), 'listing hides password-protected text' );
 wp_delete_post( $protected, true );
+update_post_meta( $id, '_abible_passages', array( 'junk', array( 'book' => array( 'gen' ) ), array( 'book' => 'gen', 'chapter' => array( 1 ) ), array( 'book' => 'john', 'chapter' => 3, 'verse' => 16, 'end_chapter' => null, 'end_verse' => null, 'relation' => 'cites' ) ) );
+$saved_query = $GLOBALS['wp_the_query'];
+$GLOBALS['wp_the_query'] = new WP_Query( array( 'p' => $id, 'post_type' => ABible_Content::TYPE ) );
+$GLOBALS['wp_query'] = $GLOBALS['wp_the_query'];
+$GLOBALS['wp_query']->the_post();
+$rendered = $frontend->publication( '<h2>A</h2><p>Body</p><h2>B</h2>' );
+wp_reset_postdata();
+$GLOBALS['wp_the_query'] = $saved_query;
+$GLOBALS['wp_query'] = $saved_query;
+abible_assert( str_contains( $rendered, 'Cituojama: Jono 3,16' ) && ! str_contains( $rendered, 'Array' ) && 1 === substr_count( $rendered, 'Cituojama' ), 'malformed stored passages skipped without errors' );
 
 // Mock only HTTP transport; execute actual WordPress metadata, transients and filesystem APIs.
 define( 'ABIBLE_GITHUB_TOKEN', 'fixture-only-not-a-real-credential' );
@@ -145,6 +155,10 @@ abible_assert( is_wp_error( $updater->download_private_release( false, $asset_ur
 $mode = 'corrupt';
 abible_assert( is_wp_error( $updater->download_private_release( false, $asset_url, null, array() ) ), 'corrupted package rejected' );
 $mode = 'good';
+$cached = get_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
+$cached['asset']['digest'] = '';
+set_site_transient( ABible_Updater::RELEASE_CACHE_KEY, $cached, MINUTE_IN_SECONDS );
+abible_assert( is_wp_error( $updater->download_private_release( false, $asset_url, null, array() ) ), 'download without digest fails closed' );
 $release['assets'][0]['digest'] = '';
 delete_site_transient( ABible_Updater::RELEASE_CACHE_KEY );
 abible_assert( empty( $updater->filter_plugin_updates( new stdClass() )->response ), 'missing digest fails closed' );
