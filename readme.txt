@@ -28,3 +28,7 @@ GitHub privacy: https://docs.github.com/en/site-policy/privacy-policies/github-g
 == Changelog ==
 = 0.1.0 =
 Initial library/editor foundation, secure updater, release packaging and security/runtime gates.
+Library listings no longer show excerpts of password-protected publications. The updater
+caches invalid release metadata, stores only verified fields, always requires the SHA-256
+digest and hides the requirements marker in update details. The topic portal loads all
+topic terms in one query.

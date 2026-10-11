@@ -12,7 +12,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 class ABible_Updater {
     const REPOSITORY = 'kiritoshiro/wp-about-bible';
     const API_VERSION = '2026-03-10';
-    const RELEASE_CACHE_KEY = 'abible_github_latest_release_v2';
+    // Bump the suffix whenever the cached release shape changes.
+    const RELEASE_CACHE_KEY = 'abible_github_latest_release_v3';
     const MAX_PACKAGE_SIZE = 52428800;
 
     public function __construct() {
@@ -37,6 +38,13 @@ class ABible_Updater {
 
     private function status( $code, $message ) {
         set_site_transient( 'abible_update_status', array( 'code' => $code, 'message' => $message, 'checked_at' => time() ), DAY_IN_SECONDS );
+    }
+
+    /** Reject a release and cache the failure, so a bad release cannot trigger a GitHub request on every check. */
+    private function reject( $code = 'unavailable', $message = 'No verified release available. Check GitHub or retry from Dashboard → Updates.' ) {
+        set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
+        $this->status( $code, $message );
+        return null;
     }
 
     private function token() {
@@ -83,33 +91,25 @@ class ABible_Updater {
         );
 
         if ( is_wp_error( $response ) || 200 !== wp_remote_retrieve_response_code( $response ) ) {
-            set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
-            $this->status( 'unavailable', 'No verified release available. Check GitHub or retry from Dashboard → Updates.' );
-            return null;
+            return $this->reject();
         }
 
         $release = json_decode( wp_remote_retrieve_body( $response ), true );
         if ( ! is_array( $release ) || ! is_string( $release['tag_name'] ?? null ) || ! empty( $release['draft'] ) || ! empty( $release['prerelease'] ) ) {
-            set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
-            $this->status( 'unavailable', 'No verified release available. Check GitHub or retry from Dashboard → Updates.' );
-            return null;
+            return $this->reject();
         }
 
-        if ( ! is_string( $release['body'] ?? null ) || ! preg_match( '/<!-- abible-requirements:(\{[^\r\n]+\}) -->/', $release['body'], $matches ) ) {
-            $this->status( 'invalid', 'Release requirements are missing. No update offered.' );
-            return null;
-        }
-        $requirements = json_decode( $matches[1], true );
+        // package.py writes this marker as the last line of the release notes.
+        $marker = '/<!-- abible-requirements:(\{[^\r\n]+\}) -->/';
+        $requirements = is_string( $release['body'] ?? null ) && preg_match( $marker, $release['body'], $matches ) ? json_decode( $matches[1], true ) : null;
         foreach ( array( 'wordpress', 'php' ) as $requirement ) {
-            if ( ! is_array( $requirements ) || ! is_string( $requirements[ $requirement ] ?? null ) || ! preg_match( '/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/D', $requirements[ $requirement ] ) ) { return null; }
+            if ( ! is_array( $requirements ) || ! is_string( $requirements[ $requirement ] ?? null ) || ! preg_match( '/^[0-9]+\.[0-9]+(?:\.[0-9]+)?$/D', $requirements[ $requirement ] ) ) {
+                return $this->reject( 'invalid', 'Release requirements are missing. No update offered.' );
+            }
         }
-        $release['requires'] = $requirements['wordpress'];
-        $release['requires_php'] = $requirements['php'];
         $version = preg_replace( '/^v/i', '', (string) $release['tag_name'] );
         if ( ! preg_match( '/^[0-9]+\.[0-9]+\.[0-9]+$/D', $version ) ) {
-            set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
-            $this->status( 'unavailable', 'No verified release available. Check GitHub or retry from Dashboard → Updates.' );
-            return null;
+            return $this->reject();
         }
 
         $asset = null;
@@ -146,14 +146,26 @@ class ABible_Updater {
         }
 
         if ( ! $asset || ( $release['html_url'] ?? '' ) !== 'https://github.com/' . self::REPOSITORY . '/releases/tag/' . rawurlencode( $release['tag_name'] ) ) {
-            set_site_transient( self::RELEASE_CACHE_KEY, array( 'error' => true ), 5 * MINUTE_IN_SECONDS );
-            $this->status( 'unavailable', 'No verified release available. Check GitHub or retry from Dashboard → Updates.' );
-            return null;
+            return $this->reject();
         }
 
         $this->status( 'ok', 'Verified release: ' . $version );
-        $release['version'] = $version;
-        $release['asset'] = $asset;
+        // Cache only the verified fields this class reads, not the full API payload.
+        // The marker is removed before the character-safe cut, so it can never be split.
+        $release = array(
+            'version'      => $version,
+            'html_url'     => $release['html_url'],
+            'notes'        => mb_substr( trim( preg_replace( $marker, '', $release['body'] ) ), 0, 20000 ),
+            'published_at' => is_string( $release['published_at'] ?? null ) ? $release['published_at'] : '',
+            'requires'     => $requirements['wordpress'],
+            'requires_php' => $requirements['php'],
+            'asset'        => array(
+                'id'                   => $asset['id'],
+                'size'                 => $asset['size'],
+                'digest'               => $asset['digest'],
+                'browser_download_url' => $asset['browser_download_url'],
+            ),
+        );
         set_site_transient( self::RELEASE_CACHE_KEY, $release, 10 * MINUTE_IN_SECONDS );
 
         return $release;
@@ -216,7 +228,7 @@ class ABible_Updater {
         }
 
         $description = 'A Lithuanian Bible research and study library with source attribution and structured references.';
-        $changelog = is_string( $release['body'] ?? null ) ? wpautop( esc_html( $release['body'] ) ) : '<p>No release notes were provided.</p>';
+        $changelog = '' !== $release['notes'] ? wpautop( esc_html( $release['notes'] ) ) : '<p>No release notes were provided.</p>';
 
         return (object) array(
             'name'          => 'Biblijos pažinimas',
@@ -226,7 +238,7 @@ class ABible_Updater {
             'homepage'      => 'https://github.com/' . self::REPOSITORY,
             'requires'      => $release['requires'],
             'requires_php'  => $release['requires_php'],
-            'last_updated'  => isset( $release['published_at'] ) ? $release['published_at'] : '',
+            'last_updated'  => $release['published_at'],
             'download_link' => $release['asset']['browser_download_url'],
             'sections'      => array(
                 'description' => '<p>' . esc_html( $description ) . '</p>',
@@ -284,11 +296,12 @@ class ABible_Updater {
                 return new WP_Error( 'abible_github_download_failed', 'Could not download the GitHub release asset.' );
             }
             clearstatcache( true, $temporary_file );
+            // The digest is mandatory: an absent or malformed digest fails closed.
             $digest = $asset['digest'] ?? '';
             if ( filesize( $temporary_file ) !== intval( $asset['size'] ) ||
                 file_get_contents( $temporary_file, false, null, 0, 4 ) !== "PK\x03\x04" ||
-                ( $digest !== '' && ( ! is_string( $digest ) || ! preg_match( '/^sha256:[a-f0-9]{64}$/D', $digest ) ||
-                    ! hash_equals( substr( $digest, 7 ), hash_file( 'sha256', $temporary_file ) ) ) ) ) {
+                ! is_string( $digest ) || ! preg_match( '/^sha256:[a-f0-9]{64}$/D', $digest ) ||
+                ! hash_equals( substr( $digest, 7 ), hash_file( 'sha256', $temporary_file ) ) ) {
                 return new WP_Error( 'abible_github_package_invalid', 'The release package size, ZIP header, or SHA-256 checksum is invalid.' );
             }
             // WordPress core validates and unpacks the archive after this hook.

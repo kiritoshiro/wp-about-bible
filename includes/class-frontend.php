@@ -56,7 +56,9 @@ final class ABible_Frontend {
     private function card( $post ) {
         $authors = get_the_terms( $post, 'abible_author' );
         $credit = $authors && ! is_wp_error( $authors ) ? implode( ', ', wp_list_pluck( $authors, 'name' ) ) : '';
-        return '<article class="ab-article-row"><h3><a href="' . esc_url( get_permalink( $post ) ) . '">' . esc_html( get_the_title( $post ) ) . '</a></h3>' . ( $credit ? '<p class="ab-credit">' . esc_html( $credit ) . '</p>' : '' ) . '<p>' . esc_html( wp_trim_words( $post->post_excerpt ?: wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 32 ) ) . '</p></article>';
+        // Password-protected publications must not leak their excerpt or body through listings.
+        $summary = post_password_required( $post ) ? 'Publikacija apsaugota slaptažodžiu.' : wp_trim_words( $post->post_excerpt ?: wp_strip_all_tags( strip_shortcodes( $post->post_content ) ), 32 );
+        return '<article class="ab-article-row"><h3><a href="' . esc_url( get_permalink( $post ) ) . '">' . esc_html( get_the_title( $post ) ) . '</a></h3>' . ( $credit ? '<p class="ab-credit">' . esc_html( $credit ) . '</p>' : '' ) . '<p>' . esc_html( $summary ) . '</p></article>';
     }
 
     public static function topic_image( $term, $slug ) {
@@ -70,8 +72,11 @@ final class ABible_Frontend {
     public function home() {
         $archive = get_post_type_archive_link( ABible_Content::TYPE );
         $html = '<section class="ab-library ab-home" aria-label="Biblijos pažinimas"><div class="ab-intro"><p class="ab-eyebrow">BIBLIJOS PAŽINIMAS</p><h2>Pažinkite Bibliją giliau</h2><p>Biblijos istorija, kalbos, tekstai ir tyrinėjimo metodai vienoje vietoje.</p><a class="ab-text-link" href="#ab-temos">Pasirinkite temą <span aria-hidden="true">↓</span></a></div><div class="ab-section-heading" id="ab-temos"><h2>Tyrinėkite pagal temą</h2><p>Nuo Biblijos ištakų iki jos aiškinimo — pasirinkite tai, ką norite pažinti.</p></div><div class="ab-topics">';
+        // One query loads every topic term and primes term meta for the image lookups.
+        $terms = get_terms( array( 'taxonomy' => 'abible_topic', 'slug' => array_keys( ABible_Content::topics() ), 'hide_empty' => false ) );
+        $terms = is_wp_error( $terms ) ? array() : array_column( $terms, null, 'slug' );
         foreach ( ABible_Content::topics() as $slug => $topic ) {
-            $term = get_term_by( 'slug', $slug, 'abible_topic' );
+            $term = $terms[ $slug ] ?? null;
             if ( ! $term ) { continue; }
             $link = get_term_link( $term );
             if ( is_wp_error( $link ) ) { continue; }
@@ -81,7 +86,10 @@ final class ABible_Frontend {
         $html .= '</div><div class="ab-browse"><h2>Ieškote konkrečios Biblijos knygos?</h2><p>Raskite turimus įvadus ir ištraukų paaiškinimus.</p><div class="ab-book-links">';
         $books = get_terms( array( 'taxonomy' => 'abible_book', 'hide_empty' => true ) );
         if ( ! is_wp_error( $books ) ) {
-            foreach ( $books as $book ) { $html .= '<a href="' . esc_url( get_term_link( $book ) ) . '">' . esc_html( $book->name ) . '</a>'; }
+            foreach ( $books as $book ) {
+                $link = get_term_link( $book );
+                if ( ! is_wp_error( $link ) ) { $html .= '<a href="' . esc_url( $link ) . '">' . esc_html( $book->name ) . '</a>'; }
+            }
         }
         $html .= '</div><a class="ab-text-link" href="' . esc_url( $archive ) . '">Visos publikacijos ir paieška →</a></div></section>';
         return $html;
@@ -129,7 +137,11 @@ final class ABible_Frontend {
         }
         $rows = get_post_meta( $id, '_abible_passages', true );
         foreach ( is_array( $rows ) ? $rows : array() as $row ) {
-            $text = ABible_Content::books()[ $row['book'] ] ?? '';
+            // Re-validate with the editor's rules; skip rows imported or written in another shape.
+            $row = is_array( $row ) ? ABible_Content::passages( array( array_map( static fn( $value ) => $value ?? '', $row ) ) ) : null;
+            if ( ! is_array( $row ) || ! $row ) { continue; }
+            $row = $row[0];
+            $text = ABible_Content::books()[ $row['book'] ];
             $text .= $row['chapter'] ? ' ' . $row['chapter'] : '';
             $text .= $row['verse'] ? ',' . $row['verse'] : '';
             $text .= $row['end_chapter'] ? '–' . $row['end_chapter'] . ( $row['end_verse'] ? ',' . $row['end_verse'] : '' ) : '';
