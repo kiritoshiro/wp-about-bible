@@ -3,7 +3,7 @@ Contributors: kiritoshiro
 Tags: bible, library, education
 Requires at least: 6.6
 Requires PHP: 8.3
-Stable tag: 0.1.0
+Stable tag: 0.1.1
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -26,6 +26,10 @@ api.github.com. GitHub terms: https://docs.github.com/en/site-policy/github-term
 GitHub privacy: https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement
 
 == Changelog ==
+= 0.1.1 =
+The release package ships minified scripts and styles (SWC and lightningcss, pinned
+build tools). Behaviour is unchanged; the repository keeps the readable sources.
+
 = 0.1.0 =
 Initial library/editor foundation, secure updater, release packaging and security/runtime gates.
 Library listings no longer show excerpts of password-protected publications. The updater

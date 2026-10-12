@@ -21,6 +21,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+      # SWC and lightningcss, pinned in package-lock.json; package.py uses them only to minify the ZIP's assets.
+      - name: Install the minifier
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Require a tag on main and matching versions
         run: |
           git merge-base --is-ancestor HEAD origin/main

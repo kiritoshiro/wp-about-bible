@@ -43,6 +43,7 @@ See [release and rollback runbook](docs/releasing.md), [security controls](docs/
 composer install --working-dir=.github/security --no-scripts --no-plugins
 .github/security/vendor/bin/phpcs --config-set installed_paths ../../wp-coding-standards/wpcs,../../phpcsstandards/phpcsextra,../../phpcsstandards/phpcsutils
 .github/security/vendor/bin/phpcs --standard=.github/security/phpcs.xml .
+npm ci --ignore-scripts --no-audit --no-fund  # pinned SWC + lightningcss; package.py minifies the ZIP's assets
 python scripts/package.py
 python scripts/prepare-runtime.py
 python .github/playground/smoke.py --php 8.4 --wp latest

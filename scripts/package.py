@@ -4,11 +4,27 @@ import argparse
 import hashlib
 import json
 import re
+import shutil
 import subprocess
+import tempfile
 import zipfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def minify(stage):
+    """Minify the staged scripts and styles; the repository keeps the readable sources.
+
+    Needs Node.js and `npm ci --ignore-scripts` (pinned SWC and lightningcss).
+    Any failure stops the build so an unminified package is never shipped.
+    """
+    node = shutil.which('node')
+    if not node:
+        raise SystemExit('package.py: Node.js is required to minify the package assets (run npm ci first).')
+    result = subprocess.run([node, str(ROOT / 'scripts/minify-package-assets.mjs'), str(stage)], cwd=ROOT)
+    if result.returncode != 0:
+        raise SystemExit(f'package.py: asset minification failed (exit {result.returncode}).')
 
 
 def build(tag=None):
@@ -33,12 +49,18 @@ def build(tag=None):
     dist = ROOT / 'dist'
     dist.mkdir(exist_ok=True)
     package = dist / 'wp-about-bible.zip'
-    with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
-        for name in sorted(names):
-            entry = zipfile.ZipInfo('wp-about-bible/' + name, (2026, 1, 1, 0, 0, 0))
-            entry.compress_type = zipfile.ZIP_DEFLATED
-            entry.external_attr = 0o100644 << 16
-            archive.writestr(entry, (ROOT / name).read_bytes())
+    with tempfile.TemporaryDirectory() as staging:
+        stage = Path(staging) / 'wp-about-bible'
+        for name in names:
+            (stage / name).parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(ROOT / name, stage / name)
+        minify(stage)
+        with zipfile.ZipFile(package, 'w', zipfile.ZIP_DEFLATED) as archive:
+            for name in sorted(names):
+                entry = zipfile.ZipInfo('wp-about-bible/' + name, (2026, 1, 1, 0, 0, 0))
+                entry.compress_type = zipfile.ZIP_DEFLATED
+                entry.external_attr = 0o100644 << 16
+                archive.writestr(entry, (stage / name).read_bytes())
     with zipfile.ZipFile(package) as archive:
         assert archive.testzip() is None
         assert set(archive.namelist()) == {'wp-about-bible/' + n for n in names}
