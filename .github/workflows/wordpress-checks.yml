@@ -38,6 +38,8 @@ jobs:
         with:
           node-version: '24'
           package-manager-cache: false
+      - name: Install the minifier
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: PHP syntax
         run: find . -name '*.php' -not -path './.git/*' -print0 | xargs -0 -n1 php -l
       - name: Build and inspect installable package
