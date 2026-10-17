@@ -4,7 +4,7 @@ on:
   push:
     branches: [main]
   schedule:
-    - cron: '17 6 1 * *' # monthly: ships no third-party dependencies, so only the rule-based baseline re-runs; the rest skip (see the gate job)
+    - cron: '17 6 1 * *' # monthly: ships no third-party dependencies; re-runs the rule-based baseline and the WordPress checks (WP latest)
   workflow_dispatch:
   workflow_call:
 permissions:
@@ -16,7 +16,6 @@ jobs:
   baseline:
     uses: ./.github/workflows/cybersecurity.yml # zizmor: ignore[self-repository] -- Reusable checks must follow the candidate commit.
   wordpress:
-    if: github.event_name != 'schedule'
     uses: ./.github/workflows/wordpress-checks.yml # zizmor: ignore[self-repository] -- Same-commit runtime checks.
   gate:
     name: All security checks passed
@@ -28,8 +27,5 @@ jobs:
       - name: Require every check to succeed
         env:
           RESULTS: ${{ toJSON(needs) }}
-          EVENT: ${{ github.event_name }}
-        # The scheduled run re-runs only the rule-based baseline; the
-        # deterministic WordPress checks skip on it by design.
         run: |
-          echo "$RESULTS" | jq -e --arg event "$EVENT" 'to_entries | all(.[]; .value.result == "success" or ($event == "schedule" and .key == "wordpress" and .value.result == "skipped"))'
+          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
