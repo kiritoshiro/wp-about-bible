@@ -17,15 +17,29 @@ jobs:
     uses: ./.github/workflows/cybersecurity.yml # zizmor: ignore[self-repository] -- Reusable checks must follow the candidate commit.
   wordpress:
     uses: ./.github/workflows/wordpress-checks.yml # zizmor: ignore[self-repository] -- Same-commit runtime checks.
+  dependency-review:
+    # Blocks a PR that introduces a vulnerable dependency. The npm build tools
+    # and Composer scanner tooling are dev-only but build the shipped files.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+        with:
+          fail-on-severity: moderate
+          fail-on-scopes: runtime, development
   gate:
     name: All security checks passed
     if: ${{ always() }}
-    needs: [baseline, wordpress]
+    needs: [baseline, wordpress, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Require every check to succeed
         env:
           RESULTS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
         run: |
-          echo "$RESULTS" | jq -e 'all(.[]; .result == "success")'
+          # Dependency review compares a PR with its base, so it is the only
+          # check allowed to skip, and only outside pull requests.
+          echo "$RESULTS" | jq -e --arg event "$EVENT" 'all(to_entries[]; .value.result == "success" or (.key == "dependency-review" and $event != "pull_request" and .value.result == "skipped"))'
